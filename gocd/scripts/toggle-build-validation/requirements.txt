@@ -1,0 +1,6 @@
+mock==2.0.0
+pex==1.2.4
+python-dateutil==2.6.0
+pytz>=2013.7
+requests==2.12.4
+pytest>=3.0.5

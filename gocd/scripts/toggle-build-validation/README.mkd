@@ -1,0 +1,19 @@
+# Toggle validation scripts
+
+Used in build pipelines to automate toggles.json validation.
+
+## Build
+Use `cat pex_creation.md` to print out the command required to package the `toggle-validation.pex` file
+
+## Run Locally
+Copy the generated `toggle-validation.pex` in the root directory of the desired repo, where toggles.json is too.
+
+```
+./toggle-validation.pex
+```
+
+## Run tests
+
+```
+./run-tests.sh
+```

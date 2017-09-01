@@ -1,0 +1,551 @@
+groups:
+- name: CI
+  jobs:
+  - test
+  - build
+  - deploy-dev
+  - tag-release
+  - destroy-dev
+
+- name: PuP
+  jobs:
+  - update-pipeline
+  - execute-pipeline
+
+- name: Saks
+  jobs:
+  - deploy-s5a-stqa
+  - deploy-s5a-preview
+  - deploy-s5a-prod
+  - deploy-canary-s5a-prod
+  - destroy-canary-s5a-prod
+
+- name: Off5th
+  jobs:
+  - deploy-o5a-stqa
+  - deploy-o5a-preview
+  - deploy-o5a-prod
+  - deploy-canary-o5a-prod
+  - destroy-canary-o5a-prod
+
+############
+
+resources:
+- name: ((app-name))-repo
+  type: git
+  source:
+    uri: https://github.com/saksdirect/((app-name))
+    branch: ((app-branch))
+    username: ((git-user))
+    password: ((git-token-password))
+    ignore_paths:
+      - infrastructure/pipelines/pipeline.yml
+      - infrastructure/pipelines/setup-pipeline.sh
+      - gocd/*
+      - ((app-branch))-version
+
+- name: aws-ref-arch
+  type: git
+  source:
+    uri: https://github.com/saksdirect/aws-ref-arch
+    username: ((git-user))
+    password: ((git-token-password))
+
+- name: ((app-name))-image
+  type: docker-image
+  source:
+    repository: hbc-docker.jfrog.io/((app-name))
+    username: ((artifactory-username))
+    password: ((artifactory-password))
+
+- name: terraform-image
+  type: docker-image
+  source:
+    repository: hbc-docker.jfrog.io/ruby-terraform-mongo
+    username: ((artifactory-username))
+    password: ((artifactory-password))
+
+- name: sbt-image
+  type: docker-image
+  source:
+    repository: hbc-docker.jfrog.io/microservice-build
+    tag: sbt-0.13.8
+    username: ((artifactory-username))
+    password: ((artifactory-password))
+
+- name: version
+  type: semver
+  source:
+    driver: git
+    initial_version: 1.0.0
+    uri: https://github.com/saksdirect/((app-name))
+    branch: ((app-branch))
+    username: ((git-user))
+    password: ((git-token-password))
+    file: ((app-branch))-version
+
+#### PuP resources ####
+- name: ((app-name))-pipeline
+  type: git
+  source:
+    uri: https://github.com/saksdirect/((app-name))
+    branch: ((app-branch))
+    paths:
+      - infrastructure/pipelines/pipeline.yml
+      - infrastructure/pipelines/config.yml
+      - infrastructure/terraform/*.sh
+      - infrastructure/pipelines/tasks/*
+    username: ((git-user))
+    password: ((git-token-password))
+
+- name: fly
+  type: fly
+  source:
+    url: ((concourse-url))
+    username: ((concourse-username))
+    password: ((concourse-password))
+    team: ((concourse-team))
+
+- name: slack-alert
+  type: slack-notification
+  source:
+    url: https://hooks.slack.com/services/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
+
+- name: set-pipeline
+  type: concourse-pipeline
+  source:
+    target: ((concourse-url))
+    insecure: "false"
+    teams:
+    - name: main
+      username: ((concourse-username))
+      password: ((concourse-password))
+
+
+jobs:
+- name: test
+  plan:
+  - aggregate:
+    - get: ((app-name))-repo
+      trigger: true
+    - get: sbt-image
+
+  - task: unit
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/01_test_unit.yml
+    image: sbt-image
+    params:
+      JFROG_USER: ((artifactory-username))
+      JFROG_PASS: ((artifactory-password))
+
+- name: build
+  plan:
+  - aggregate:
+    - get: ((app-name))-repo
+      passed: [test]
+      trigger: true
+    - get: sbt-image
+
+  - task: dist
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/02_build_dist.yml
+    image: sbt-image
+    params:
+      JFROG_USER: ((artifactory-username))
+      JFROG_PASS: ((artifactory-password))
+
+  - put: ((app-name))-image
+    params:
+      build: artifacts
+      tag: artifacts/commit_sha
+      tag_as_latest: true
+
+- name: deploy-dev
+  plan:
+  - aggregate:
+    - get: terraform-image
+    - get: aws-ref-arch
+    - get: ((app-name))-repo
+      passed: [build]
+      trigger: true
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/03_dev_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: "" # keep empty for lower environments deployments
+      TF_ENV: ((app-branch))
+      NEW_RELIC_APP_NAME: "((app-name))-((app-branch))_aws_stqa_saks" # here (app-branch) param should be maybe replaced by ${TF_ENV}
+
+- name: tag-release
+  plan:
+  - aggregate:
+    - get: ((app-name))-repo
+      passed: [deploy-dev]
+    - get: sbt-image
+
+  - task: check-master-branch
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/04_check_master_branch.yml
+    image: sbt-image
+    params:
+      BRANCH: ((app-branch))
+
+  - get: ((app-name))-image
+    params:
+      save: true
+
+  - put: version
+    params: {bump: minor}
+
+  - put: ((app-name))-image
+    params:
+      load: ((app-name))-image
+      tag: version/number
+
+- name: destroy-dev
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: ((app-name))-repo
+      passed: [deploy-dev]
+
+    - get: aws-ref-arch
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/08_destroy_dev_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      TF_ENV: ((app-branch))
+
+
+###########################
+# Saks jobs
+###########################
+- name: deploy-s5a-stqa
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: S5A-STQA
+      NEW_RELIC_APP_NAME: "((app-name))-S5A-STQA"
+
+- name: deploy-s5a-preview
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: S5A-PREVIEW
+      NEW_RELIC_APP_NAME: "((app-name))-S5A-PREVIEW"
+
+- name: deploy-s5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: S5A-PROD
+      NEW_RELIC_APP_NAME: "((app-name))-S5A-PROD"
+
+- name: deploy-canary-s5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/06_deploy_canary_terraform.yml
+    image: terraform-image
+    params:
+      TF_ENV: S5A-PROD-CANARY
+      PROD_TF_ENV: S5A-PROD
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: "((new_relic_license_key))"
+      NEW_RELIC_APP_NAME: "((app-name))-S5A-PROD-CANARY"
+
+- name: destroy-canary-s5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/07_destroy_canary_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: S5A-PROD-CANARY
+      PROD_TF_ENV: S5A-PROD
+      NEW_RELIC_APP_NAME: "((app-name))-S5A-PROD-CANARY"
+
+###########################
+# Off5th Deploy Jobs
+###########################
+
+- name: deploy-o5a-stqa
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: O5A-STQA
+      NEW_RELIC_APP_NAME: "((app-name))-O5A-STQA"
+
+- name: deploy-o5a-preview
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: O5A-PREVIEW
+      NEW_RELIC_APP_NAME: "((app-name))-O5A-PREVIEW"
+
+- name: deploy-o5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/05_deploy_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: O5A-PROD
+      NEW_RELIC_APP_NAME: "((app-name))-O5A-PROD"
+
+- name: deploy-canary-o5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/06_deploy_canary_terraform.yml
+    image: terraform-image
+    params:
+      TF_ENV: O5A-PROD-CANARY
+      PROD_TF_ENV: O5A-PROD
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: "((new_relic_license_key))"
+      NEW_RELIC_APP_NAME: "((app-name))-O5A-PROD-CANARY"
+
+- name: destroy-canary-o5a-prod
+  plan:
+  - aggregate:
+    - get: terraform-image
+
+    - get: aws-ref-arch
+
+    - get: ((app-name))-repo
+      passed: [tag-release]
+
+    - get: version
+      passed: [tag-release]
+
+  - task: terraform
+    file: ((app-name))-repo/infrastructure/pipelines/tasks/07_destroy_canary_terraform.yml
+    image: terraform-image
+    params:
+      AWS_DEFAULT_REGION: "us-east-1"
+      NEW_RELIC_LICENSE_KEY: ((new_relic_license_key))
+      TF_ENV: O5A-PROD-CANARY
+      PROD_TF_ENV: O5A-PROD
+      NEW_RELIC_APP_NAME: "((app-name))-O5A-PROD-CANARY"
+
+###########################
+# PuP jobs
+###########################
+- name: update-pipeline
+  plan:
+  - get: ((app-name))-pipeline
+    trigger: true
+
+  - task: fly-create-secrets
+    config:
+      platform: linux
+
+      image_resource:
+        type: docker-image
+        source: { repository: alpine }
+
+      inputs:
+      - name: ((app-name))-pipeline
+
+      outputs:
+      - name: secrets
+
+      run:
+        path: sh
+        args:
+          - -exc
+          - |
+            cat > secrets/secrets.yml <<EOL
+              git-user: ((git-user))
+              git-token-password: ((git-token-password))
+              artifactory-username: ((artifactory-username))
+              artifactory-password: ((artifactory-password))
+              new_relic_license_key: ((new_relic_license_key))
+              concourse-username: ((concourse-username))
+              concourse-password: ((concourse-password))
+            EOL
+
+
+  - put: set-pipeline
+    params:
+      pipelines:
+      - name: ((app-name))_((app-branch))
+        team: main
+        config_file: ((app-name))-pipeline/infrastructure/pipelines/pipeline.yml
+        vars_files:
+        - ((app-name))-pipeline/infrastructure/pipelines/config.yml
+        - secrets/secrets.yml
+
+  - put: slack-alert
+    params:
+      always_notify: true
+      channel: '#concourse-ci'
+      username: 'Concourse CI'
+      icon_emoji: ':airplane:'
+      text: ":white_check_mark: ((app-name))_((app-branch)) pipeline updated - Check it out  <((concourse-url))/teams/$BUILD_TEAM_NAME/pipelines/$BUILD_PIPELINE_NAME/jobs/$BUILD_JOB_NAME/builds/$BUILD_NAME|here>"
+
+- name: execute-pipeline
+  plan:
+  - get: ((app-name))-pipeline
+    passed: [update-pipeline]
+    trigger: true
+
+  - aggregate:
+    - put: slack-alert
+      params:
+        always_notify: true
+        channel: '#concourse-ci'
+        username: 'Concourse CI'
+        icon_emoji: ':airplane:'
+        text: ":arrows_counterclockwise: Triggering job ((app-name))_((app-branch))/*test*  <((concourse-url))/teams/$BUILD_TEAM_NAME/pipelines/((app-name))_((app-branch))|now>..."
+
+    - put: fly
+      params:
+        command: trigger-job
+        options: "--watch --job ((app-name))_((app-branch))/test"
+
+    - put: fly
+      params:
+        command: unpause-job
+        options: "-j ((app-name))_((app-branch))/test"
+        
+
+resource_types:
+- name: slack-notification
+  type: docker-image
+  source:
+    repository: cfcommunity/slack-notification-resource
+    tag: latest
+- name: fly
+  type: docker-image
+  source:
+    repository: hbc-docker.jfrog.io/concourse-fly-resource
+    username: ((artifactory-username))
+    password: ((artifactory-password))
+    tag: latest
+- name: concourse-pipeline
+  type: docker-image
+  source:
+    repository: concourse/concourse-pipeline-resource

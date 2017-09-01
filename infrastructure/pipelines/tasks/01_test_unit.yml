@@ -1,0 +1,16 @@
+platform: linux
+
+inputs:
+- name: toggle-service-repo
+
+caches:
+- path: toggle-service-repo/ivy
+
+params:
+  SBT_OPTS: -Dsbt.ivy.home=./ivy
+
+run:
+  dir: toggle-service-repo
+  path: sbt
+  args:
+    - test-only unit*

@@ -1,0 +1,7 @@
+export banner="saks"
+export env_from="stqa"
+export api_url="http://nginxservices.svc.qa-s5a.hbc-digital-1.cns.digital.hbc.com/v1"
+export aws_url="ec2-user@ec2-34-207-242-210.compute-1.amazonaws.com"
+export aws_mongo_env="192.168.2.59:27017"
+export aws_login="--username test --password pwd"
+export mongo_db_conn="toggle_test"

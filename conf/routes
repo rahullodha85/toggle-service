@@ -1,0 +1,59 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /toggle-service/assets/*file                           controllers.Assets.at(path="/public", file)
+
+# Swagger api json doc page
+GET     /api-docs                               no.samordnaopptak.apidoc.controllers.ApiDocController.get
+
+# Index page
+GET     /toggle-service              controllers.Application.index
+
+# Change log level
+PUT     /toggle-service/logLevel/$level<(ALL|TRACE|DEBUG|INFO|WARN|ERROR|OFF)> controllers.Application.changeLogLevel(level: String)
+# Change log level convenience method
+GET     /toggle-service/logLevel/$level<(ALL|TRACE|DEBUG|INFO|WARN|ERROR|OFF)> controllers.Application.changeLogLevelGet(level: String)
+
+# Admin
+GET     /toggle-service/admin/ping                controllers.Admin.ping
+GET     /toggle-service/admin/jvmstats            controllers.Admin.jvmstats
+
+# Toggle
+GET     /toggle-service/toggles                                             controllers.ToggleController.getToggles(filter: String ?= "")
+POST    /toggle-service/toggles                                             controllers.ToggleController.updateAll
+PUT     /toggle-service/toggles                                             controllers.ToggleController.createAll
+PUT     /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>                controllers.ToggleController.create(toggleName: String)
+POST    /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>                controllers.ToggleController.update(toggleName: String)
+DELETE  /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>                controllers.ToggleController.delete(toggleName: String)
+GET     /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>                controllers.ToggleController.getByName(toggleName: String)
+GET     /toggle-service/toggles/from/*host                                  controllers.ToggleController.copyFrom(host: String)
+DELETE  /toggle-service/toggles                                             controllers.ToggleController.deleteToggles(filter: String ?= "")
+
+# Toggle History
+GET     /toggle-service/history                                             controllers.ToggleController.getAllHistory
+GET     /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>/history        controllers.ToggleController.getHistory(toggleName: String)
+
+# Toggle Admin UI
+GET     /toggle-service/ui/login                                               controllers.ToggleAdmin.login
+POST    /toggle-service/ui/login                                               controllers.ToggleAdmin.authenticate
+GET     /toggle-service/ui/logout                                              controllers.ToggleAdmin.logout
+
+GET     /toggle-service/ui/togglesList                                         controllers.ToggleAdmin.togglesList
+
+GET     /toggle-service/ui/editToggles                                         controllers.ToggleAdmin.editTogglesView
+POST   /toggle-service/ui/editToggles                                         controllers.ToggleAdmin.editToggles
+
+GET     /toggle-service/ui/toggles/$toggleName<[a-zA-Z0-9_.%]+>/history        controllers.ToggleAdmin.getHistory(toggleName: String)
+
+# Toggle Usages
+POST    /toggle-service/registrations                                 controllers.ToggleUsagesController.register
+GET     /toggle-service/usages                                        controllers.ToggleUsagesController.getAllUsages
+GET     /toggle-service/toggles/$toggleName<[a-zA-Z0-9_.%]+>/usages   controllers.ToggleUsagesController.getToggleUsages(toggleName: String)
+GET     /toggle-service/usages/$user<[a-zA-Z0-9_.\-%]+>                 controllers.ToggleUsagesController.getTogglesByUser(user: String)
+
+# Toggle Counts
+GET     /toggle-service/counts                                                  controllers.ToggleCountsController.getCounts(max_days: Int ?= 90)
+GET     /toggle-service/counts/now                                              controllers.ToggleCountsController.currentCounts
+POST    /toggle-service/counts/now                                              controllers.ToggleCountsController.recordCurrentCounts

@@ -1,0 +1,130 @@
+@(hbcUser: HbcUser, queryParamSafeName: String)
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+
+        <title>Edit Toggle</title>
+        <script type="text/javascript" src="@routes.Assets.at("js/jquery.min.js")"></script>
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/feature_toggles.css")">
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/smoothness.css")">
+        <meta name="viewport" content="width= device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=0">
+
+        <script type="text/javascript">
+            var toggleInformation,
+                userName = "@{hbcUser.username}";
+
+            $(function(){
+
+                $.ajax({
+                    type: "GET",
+                    url: "@{routes.ToggleController.getByName(queryParamSafeName)}",
+                    // The key needs to match your method's input parameter (case-sensitive).
+                    success: function(data) {
+                      toggleInformation = data.response.results
+                      $('#feature_name').html(toggleInformation.toggle_name)
+                      $('#type option[value="' + toggleInformation.toggle_type + '"]').prop('selected',true)
+                      $('#desc').val(toggleInformation.description)
+                      $('#editTable').show();
+                    },
+                    error: function(jqXHR, textStatus, errThrown) {
+                        var err = jqXHR.responseJSON.errors[0];
+                        var data = err.data || "";
+                        var error = err.error || "";
+                        var errMsg = "Failed to update toggle. " + data + ", " + error;
+                        handleError(errMsg);
+                    }
+                });
+            })
+
+            $('.logoff-button').click(function(event){
+                event.preventDefault();
+                var confirmation = confirm('Are you sure you want log off?');
+                if (confirmation) {
+                    window.location = '@{routes.ToggleAdmin.logout}';
+                }
+            });
+
+            function saveToggle() {
+                var item = {"item": {
+                                "toggle_name" : toggleInformation.toggle_name,
+                                "toggle_state" : toggleInformation.toggle_state,
+                                "created_timestamp" : "",
+                                "modified_timestamp" : "",
+                                "description" : $('#desc').val(),
+                                "toggle_type" : $('#type').val(),
+                                "modified_by" : userName
+                           }
+                };
+                function handleError(errMsg) {
+                    alert('Unable to update toggle: ' + errMsg);
+                    location.href="@{routes.ToggleAdmin.togglesList}";
+                }
+                $.ajax({
+                    type: "POST",
+                    url: "@{routes.ToggleController.update(queryParamSafeName)}",
+                    data: JSON.stringify(item),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function(data) {
+                      alert("Successfully updated toggle");
+                      location.href="@{routes.ToggleAdmin.togglesList}";
+                    },
+                    error: function(jqXHR, textStatus, errThrown) {
+                        var err = jqXHR.responseJSON.errors[0]; //.data; // error
+                        var data = err.data || "";
+                        var error = err.error || "";
+                        var errMsg = "Failed to update toggle. " + data + ", " + error;
+                        handleError(errMsg);
+                    }
+                });
+            }
+        </script>
+
+        <meta name="viewport" content="width= device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=0">
+        <style>
+                html,body {
+                    border: 0 none;
+                    font-family: 'Questrial',Verdana,arial,helvetica;
+                    margin: 0 auto;
+                    padding 0;
+                }
+                table {
+                    margin: 0 auto;
+                    max-width: 320px;
+                }
+                tr, td {
+                    border-bottom: 0px
+                }
+                textarea {
+                    resize: none;
+                }
+        </style>
+    </head>
+    <body>
+        @header("Edit Toggle")
+        <br>
+            <table id="editTable" style="display:none">
+                <tr>
+                    <td>Feature Name:</td>
+                    <td><span id="feature_name"></span></td>
+                </tr>
+                <tr>
+                    <td>Feature Type:</td>
+                    <td>
+                        <select id="type" name="FEATURE_TYPE">
+                            <option selected value="Permanent">Permanent</option>
+                            <option value="Project">Project</option>
+                            <option value="Temporary">Temporary</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Feature Description:</td>
+                    <td><textarea id="desc" name="FEATURE_DESCRIPTION" rows="5"></textarea></td>
+                </tr>
+                <tr>
+                    <td colspan="2"><input type="button" value="Save" onclick="saveToggle()"></td>
+                </tr>
+            </table>
+    </body>
+</html>

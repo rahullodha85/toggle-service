@@ -1,0 +1,8 @@
+platform: linux
+
+run:
+  path: sh
+  args:
+  - -exc
+  - |
+    [ ${BRANCH} = "master" ] || exit 1

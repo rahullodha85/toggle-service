@@ -1,0 +1,28 @@
+# Testing  gocd-scripts
+
+## Description
+Tests to verify the correctness of toggle-registration scripts for gocd.
+
+Can be run locally, but they're mainly intended to be run in CI and break the `toggle-service-gocd-scripts` pipeline, preventing it from refreshing the artifact if some test fail.
+
+## Run tests locally
+Move to `toggle-registration` directory and run `bats test`
+
+### Pre-requisites
+* Install BATS (https://github.com/sstephenson/bats#installing-bats-from-source)
+   ```
+   $ git clone https://github.com/sstephenson/bats.git
+   $ cd bats
+   $ ./install.sh /usr/local
+   ```
+
+* set the following env variables:
+   ```
+   export GO_AUTH=user:password
+   export A_WORKING_SLOT=10
+   ```
+
+   NOTE: you need to specify the number of `$A_WORKING_SLOT`, because some tests will actually simulate registration to a real slot. 
+   It will anyway use an empty toggles.json so that we don't alter data in the slots databases.
+   
+

@@ -1,0 +1,169 @@
+# toggle-service
+ 
+## Prerequisites
+
+## Commands
+- To create a new box with containers running:
+
+     ```
+      sbt build-zip
+
+      vagrant up
+     ```
+- To run clean, test, and deploy your latest code
+
+  ```
+  sbt pre-commit
+  ```
+- Sbt commands:
+    - build-zip: Compiles, tests, and publishes a zip file with the new code.
+    - pre-commit: Compiles, tests, zips code, and then refreshes docker container.
+
+## Routes
+
+[list all routes that this service supports]
+
+| Method | Route | Class | Description
+| ------ | ----- | ----- | -----------
+| GET | /toggle-service | controllers.Application.index | Index Page
+| PUT | /toggle-service/logLevel/$level | controllers.Application.changeLogLevel | Change Log Level
+| GET | /toggle-service/logLevel/$level | controllers.Application.changeLogLevel | Change Log Level (Convenient Method)
+| GET | /toggle-service/admin/ping | controllers.Admin.ping | Ping Service
+| GET | /toggle-service/admin/jvmstats | controllers.Admin.jvmstats | Display current JVM Stats
+
+
+# Secrets Management
+
+One of the challenges we faced with our services continuous integration and deployment is secrets and credentials management. Often CI/CD pipelines will have deployment pieces like database passwords, user logins etc. that are intended only to be accessible by selective apps and systems.
+
+## Amazon Parameter Store
+
+After evaluating tools available for secrets management, Rogue Squadron Team has decided to employ Amazon's Parameter Store. Secrets are stored in Amazon Parameter Store as key-value pairs.
+
+## Adopted solution
+
+The application will lookup Configuration params in the Amazon Parameter Store first, then in the local config files. In this way, secrets can be treated in the code as common config params, and values stored  in the Amazon Parameter Store will in fact *override* the values defined in the local config file.
+
+## Prerequisites
+
+In order to read secrets from Amazon Parameter Store, the environment where Toggle Service is running is required to have AWS credentials and config to access the Parameter Store (i.e.: ~/.aws/credentials ~/.aws/config, or IAM role, or env variables).
+
+If no AWS credentials are available, Toggle Service won't fail and all params will be read from the local config, with no secrets override.
+
+## How to pass secrets to toggle-service
+
+### Step 1: Add a `secrets` block to the `.conf` file
+
+As an example, suppose toggle-service currently configures `mongoPassword` this way in its `.conf` file:
+
+```
+mongo {
+  ...
+  mongoPassword = "dev321"
+  ...
+}
+```
+
+To fetch it as a secret, we would have to specify an override this way:
+
+
+```
+secrets {
+  mongo {
+    mongoPassword = <AWS Parameter Store key name>
+  }
+}
+```
+
+When the application starts up, it will fetch the AWS Parameter Store key specified (with the value of course) and use that to override, in this case, `mongo.mongoPassword` config value. This fetching is only done **once**, at start-up (it's subsequently cached).
+
+If this `secrets` block is not present in the `.conf` file, no fetching of secrets will be done.
+
+### Step 2: Create AWS Parameter Store keys that the app needs
+
+
+Now that we've set up the `secrets` block, we need to create the key in AWS Parameter Store.
+
+To do that, first, we need to create a KMS key to encrypt / decrypt the AWS Parameter Store key with. This KMS key can be used to encrypt / decrypt *multiple* AWS Parameter Store keys, so we don't have to create a KMS key every time we want to add a new secret.
+
+#### Step 2.1: Create KMS key
+
+```aws kms create-key --description test-app1 --region us-east-1```
+
+which will give a json response as follows
+
+```{
+       "KeyMetadata": {
+           "Origin": "AWS_KMS",
+           "KeyId": "a86dc4c5-64d4-4357-b536-a56d07fba972",
+           "Description": "prod-app1",
+           "Enabled": true,
+           "KeyUsage": "ENCRYPT_DECRYPT",
+           "KeyState": "Enabled",
+           "CreationDate": 1495384241.69,
+           "Arn": "arn:aws:kms:us-east-1:195056086334:key/a86dc4c5-64d4-4357-b536-a56d07fba972",
+           "AWSAccountId": "195056086334"
+       }
+   }
+```
+
+#### Step 2.2: Create AWS Parameter Store Key
+
+Next, we'll create an AWS Parameter Store key that's encrypted. It will be encrypted with the KMS key we created in [step 2.1](#step-21-create-kms-key).
+
+```aws ssm put-parameter --name /toggle/saks/Dev/<AWS Parameter Store key name> --value "super-secret-password" --type SecureString --key-id "a86dc4c5-64d4-4357-b536-a56d07fba972" --region us-east-1```
+
+`--type SecureString` signifies that the AWS Parameter Store *value* will be encrypted, with the KMS key specified in `--key-id`. Note here that the `--key-id` value matches the `KeyId` from the KMS key created in [step 2.1](#step-21-create-kms-key).
+
+The name of the AWS Parameter Store key is *namespaced* by the application name, banner, and environment, for example: **/toggle/saks/Dev/&lt;AWS Parameter Store key name&gt;**.
+
+The application name, banner, and environment should match these values in the `.conf` file respectively:
+
+```
+application.name="toggle"
+hbc.banner="saks"
+hbc.env="Dev"
+```
+
+#### Step 2.3: Test that your key was created properly
+
+```aws ssm get-parameters --names /toggle/saks/Dev/<AWS Parameter Store key name>  --with-decryption --region us-east-1```
+
+This is basically what the app does on start-up, but the plain text secret is subsequently just cached in-memory.
+
+#### Step 3: Configuration Provider
+
+In order to retrieve secrets from parameter store, we are using ```aws-java-sdk-ssm``` libraries. These libraries are used to retrieve secrets from parameters store at Service Start-up and fail to start service if one or more secrets is not present in parameter store.
+ConfigurationProvider class retrieves secrets and create a secrets override configuration map that will be merged with default configuration map.
+
+Note: Application should use wrapper method ```ConfigurationProvider.getConfiguration``` to retrieve both secrets and non-secrets configuration. Using any other mechanism to read configuration values will not be able to read secrets values from AWS Parameter store.
+
+### Useful Links
+
+[More explanation on AWS KMS and Parameter Store](https://hbcdigital.atlassian.net/wiki/display/TT/Storing+secrets+in+AWS+using+Amazon+KMS+and+Parameter+Store)
+
+----
+
+## Run locally with MongoDB
+To run Toggle Service locally, it is preferrable to run MongoDB locally too, instead of connecting to a shared environment. You can run MongoDB locally in a Docker container, and seed it with a json dump from the environment of your choice.
+
+* Requirement: Docker
+
+* Setup local MongoDB, run:
+
+   ```
+   ./utils/local/setup-local-mongo.sh
+   ```
+
+* Seed data, providing the host, db name, username and password of the MongoDB instance you want to dump data from:
+
+   ```
+   FROM_HOST=<see consul mongo_hosts> DB_NAME=<see consul toggle_specific/mongo_db> MONGO_USER=<see consul toggle_specific/mongo_user> MONGO_PASSWORD=<see consul toggle_specific/mongo_password> ./seed.sh
+   ```
+
+   Example for S5a prod:
+
+   ```
+   FROM_HOST=hd1pmng01lx.digital.hbc.com:27023,hd1pmng02lx.digital.hbc.com:27023,hd1pmng03lx.digital.hbc.com:27023 DB_NAME=s5a_toggle_service MONGO_USER=<secret> MONGO_PASSWORD=<secret> ./seed.sh
+   ```
+

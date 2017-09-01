@@ -1,0 +1,14 @@
+toggleservice:
+  image: sd1pgo01lx.saksdirect.com/toggle-service:<version>
+  container_name: toggle
+  hostname: <hostname>
+  restart: always
+  ports:
+    - "9860:9860"
+  volumes:
+    - /saksservices/config:/opt/toggle-service-0.1/conf/custom
+    - /saksservices/applogs/aem/tog:/opt/toggle-service-0.1/logs
+  labels:
+    io.rancher.container.network: 'true'
+  env_file:
+    - ./ms.env

@@ -1,0 +1,15 @@
+@(title: String)
+<div class="header">
+    <div class="inner">
+        <h1>
+            <a href="@{routes.ToggleAdmin.togglesList}">
+                <img src="@routes.Assets.at("images/hbc-icon.png")" border="0">
+            </a>&nbsp;@title
+        </h1>
+        <ul>
+            <li><a class="new-button">Add</a></li>
+            <li><a href="@{routes.ToggleAdmin.togglesList}" class="new-button">Toggle List</a></li>
+            <li><a class="logoff-button">Log Off</a></li>
+        </ul>
+    </div>
+</div>

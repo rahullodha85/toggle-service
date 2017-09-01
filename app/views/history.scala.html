@@ -1,0 +1,87 @@
+@(toggleName : String)
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+
+        <title>History</title>
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/feature_toggles.css")">
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/smoothness.css")">
+        <meta name="viewport" content="width= device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=0">
+
+        <script type="text/javascript" src="@routes.Assets.at("js/underscore-min.js")"></script>
+        <script type="text/javascript" src="@routes.Assets.at("js/jquery.min.js")"></script>
+        <script language="JavaScript">
+
+        $(document).ready(function(){
+            $.ajax({
+              type : "GET",
+              url: "@{routes.ToggleController.getHistory(toggleName)}",
+              success: function(data) {
+                var toggleHistory = {"toggleHistory" : data.response.results},
+                     templateString = $('#history-template').html(),
+                     compiled = _.template(templateString);
+
+                $('#tableHeader').after(
+                    compiled(toggleHistory)
+                );
+              }
+            }).fail(function(jqXHR, textStatus, errorThrown){
+                if(jqXHR.status == 404) {
+                    var noHistory = {"toggleName" : "@toggleName"},
+                     templateString = $('#no-history-template').html(),
+                     compiled = _.template(templateString);
+
+                    $('#tableHeader').after(
+                        compiled(noHistory)
+                    );
+                } else {
+                   alert("Unable to retrieve the feature toggle name: @toggleName");
+                }
+            });
+        })
+    </script>
+    <script id="history-template" type="text/x-handlebars-template">
+        <% _(toggleHistory).each(function(item) { %>
+            <tr class="feature-row">
+                <td bgcolor="#ffffff" align="left"> <%= item.modified_by %> </td>
+                <td bgcolor="#ffffff" align="left"> <%= item.action %> </td>
+                <td bgcolor="#ffffff" align="left"> <%= item.toggle_name %> </td>
+                <td bgcolor="#ffffff" align="left"> <%= item.toggle_state ? "On" : "Off" %> </td>
+                <td bgcolor="#ffffff" align="left" style="white-space:nowrap;"> <%= item.modified_timestamp %> </td>
+            </tr>
+        <% }) %>
+    </script>
+    <script id="no-history-template" type="text/x-handlebars-template">
+        <tr class="feature-row">
+            <td bgcolor="#ffffff" align="left" colspan="5"> Feature toggle <%= toggleName %> has no history</td>
+        </tr>
+    </script>
+
+    </head>
+    <body>
+
+    @header("Toggle History")
+
+    <br>
+    <br>
+
+    <div class="content">
+
+        <table cellpadding="10px" cellspacing="0px" border="0" >
+            <tbody>
+            <tr id="tableHeader" style="white-space:nowrap;">
+                <td bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="center">Modified By</td>
+                <td bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="center">Action</td>
+                <td bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="center">Feature Toggle</td>
+                <td bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="center">State</td>
+                <td bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="center">Timestamp</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <br>
+
+    </body>
+</html>

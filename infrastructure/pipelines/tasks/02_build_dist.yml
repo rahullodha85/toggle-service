@@ -1,0 +1,27 @@
+platform: linux
+
+inputs:
+- name: toggle-service-repo
+
+outputs:
+- name: artifacts
+
+caches:
+- path: toggle-service-repo/ivy
+
+params:
+  SBT_OPTS: -Dsbt.ivy.home=./ivy
+
+run:
+  dir: toggle-service-repo
+  path: sh
+  args:
+  - -exc
+  - |
+    sbt clean dist
+    cp infrastructure/terraform/Dockerfile     ../artifacts/Dockerfile
+    cp infrastructure/terraform/newrelic.yml    ../artifacts/newrelic.yml
+    cp -r conf/*                               ../artifacts/
+    cp target/universal/toggle-service-0.1.zip ../artifacts/toggle-service-0.1.zip
+    git rev-parse --short HEAD > ../artifacts/commit_sha
+

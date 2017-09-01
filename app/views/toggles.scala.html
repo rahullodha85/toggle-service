@@ -1,0 +1,286 @@
+@(hbcUser: HbcUser)
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>Toggles</title>
+    <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/feature_toggles.css")">
+    <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/jquery-ui.min.css")">
+    <script type="text/javascript" src="@routes.Assets.at("js/underscore-min.js")"></script>
+    <script type="text/javascript" src="@routes.Assets.at("js/jquery.min.js")"></script>
+    <script type="text/javascript" src="@routes.Assets.at("js/jquery-ui.min.js")"></script>
+    <script type="text/javascript">
+        var userName = "@{hbcUser.username}";
+        window.partial = function(which, data) {
+            var templateString = $('#' + which + '-partial').html(),
+                compiled = _.template(templateString);
+            return compiled(data);
+        };
+        $(function(){
+            $('#create-toggle').dialog({
+                autoOpen: false,
+                height: 600,
+                width: 450,
+                modal: true,
+                resizable: false,
+                buttons: {
+                    Create: function() {
+                        createToggle();
+                    },
+                    Cancel: function() {
+                        $(this).dialog('close');
+                    }
+                },
+                close: function() {
+                    $('#createForm')[0].reset();
+                }
+            });
+
+            $.ajax({
+                type: 'GET',
+                url: '@{routes.ToggleController.getToggles("")}',
+                success: function(data) {
+                    var toggleGroups = {
+                        'toggleGroups':
+                            _.groupBy(
+                                _.map(
+                                    data.response.results,
+                                    function (toggle) {
+                                        toggle.description = toggle.description ? toggle.description : "";
+                                        return toggle;
+                                    }
+                                ),
+                                function (toggle) {
+                                    return toggle.toggle_type;
+                                }
+                            )
+
+                    },
+                    templateString = $('#toggle-groups-template').html(),
+                    compiled = _.template(templateString);
+                    $('#header').after(
+                        compiled(toggleGroups)
+                    );
+                    $('.content').show();
+                },
+                failure: function(errMsg) {
+                    alert('Unable to retrieve toggles: ' + errMsg);
+                },
+                complete: function (request, status) {
+                    if (request.responseJSON.response.status === 'error') {
+                        alert('Unable to retrieve toggles: ' + request.responseJSON.errors[0].data + ' (' + request.responseJSON.errors[0].error + ')');
+                    }
+                }
+            });
+
+            $(document).on('click','.feature-row',function(){
+                var $sibling = $(this).next('.feature-details-row');
+                if ($sibling.is(':hidden')) {
+                    $sibling.show(350);
+                } else {
+                    $sibling.hide(350);
+                }
+            });
+
+            $('.feature-details-row').hide();
+
+            $('.logoff-button').click(function(event){
+                event.preventDefault();
+                var confirmation = confirm('Are you sure you want log off?');
+                if (confirmation) {
+                    window.location = '@{routes.ToggleAdmin.logout}';
+                }
+            });
+
+            $('.new-button').click(function(event) {
+                $('#create-toggle').dialog('open');
+                $(".ui-dialog-titlebar").hide();
+            });
+
+            $(document).on('click','.delete',function(event) {
+                var featureName = $(this).data('feature'),
+                    validate = false;
+                event.stopPropagation();
+                validate = confirm('Are you sure you want to delete the ' + featureName + ' toggle?');
+                if (validate) {
+                    $.ajax({
+                        type: 'DELETE',
+                        url: '/v1/toggle-service/toggles/' + featureName,
+                        success: function(data){
+                            $('[id="' + featureName + '_row"]').hide(350);
+                        },
+                        error: function(jqXHR, textStatus, errThrown) {
+                            var err = jqXHR.responseJSON.errors[0];
+                            var data = err.data || "";
+                            var error = err.error || "";
+                            var errMsg = "Failed to delete toggle. " + data + ", " + error;
+                            alert(errMsg);
+                        }
+                    });
+                }
+            });
+
+			$(document).on('click','.update',function(event) {
+                var featureName = $(this).data('feature');
+			    event.stopPropagation();
+                location.href='/v1/toggle-service/ui/editToggles?featureName='+featureName;
+			});
+
+		    $(document).on('click','.info',function(event) {
+                var $sibling = $(this).parent().parent().next('.feature-details-row');
+                event.stopPropagation();
+                if ($sibling.is(':hidden')) {
+                    $sibling.show(350);
+                } else {
+                    $sibling.hide(350);
+                }
+	        });
+
+	        $(document).on('click','.toggle_switch',function(event) {
+                var toggleName = $(this).data('feature'),
+                    state = $(this).data('state'),
+                    item = {'item': {
+                                'toggle_name' : toggleName,
+                                'toggle_state' : !state,
+                                'created_timestamp' : '',
+                                'modified_timestamp' : '',
+                                'toggle_type' : '',
+                                'modified_by' : userName
+                              }
+                           },
+                    validate = false;
+                event.stopPropagation();
+                validate = confirm('Are you sure you want to turn the ' + toggleName + ' toggle ' + (state ? "off" : "on") + '?');
+                if (validate) {
+                    $.ajax({
+                        type: 'POST',
+                        url: '/v1/toggle-service/toggles/' + toggleName,
+                        data: JSON.stringify(item),
+                        contentType: 'application/json; charset=utf-8',
+                        dataType: 'json',
+                        success: function(data) {
+                            $('[id="' + toggleName + '_img"]').prop('src','/v1/toggle-service/assets/images/toggle' + (state ? 'Off' : 'On') + '.gif').data('state',!state);
+                        },
+                        error: function(jqXHR, textStatus, errThrown) {
+                            var err = jqXHR.responseJSON.errors[0];
+                            var data = err.data || "";
+                            var error = err.error || "";
+                            var errMsg = "Failed to update toggle. " + data + ", " + error;
+                            alert(errMsg);
+                        }
+                    });
+                }
+	        });
+	    });
+	    function createToggle() {
+            var toggleName = $('#createForm #name').val(),
+                state = $('#createForm #state').val() === "true",
+                desc = $('#createForm #desc').val(),
+                type = $('#createForm #type').val(),
+                item = {'item': {
+                            'toggle_name' : toggleName,
+                            'toggle_state' : state,
+                            'created_timestamp' : '',
+                            'modified_timestamp' : '',
+                            "description" : desc,
+                            'toggle_type' : type,
+                            'modified_by' : userName
+                          }
+                };
+                
+            $.ajax({
+                type: 'PUT',
+                url: '/v1/toggle-service/toggles/' + toggleName,
+                data: JSON.stringify(item),
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                success: function(data) {
+                    alert('Successfully created toggle');
+                    location.href='@{routes.ToggleAdmin.togglesList}';
+                },
+                error: function(jqXHR, textStatus, errThrown) {
+                    var err = jqXHR.responseJSON.errors[0];
+                    var data = err.data || "";
+                    var error = err.error || "";
+                    var errMsg = "Failed to create toggle. " + data + ", " + error;
+                    alert(errMsg);
+                }
+            });
+	    }
+    </script>
+    <script id="toggle-groups-template" type="text/x-handlebars-template">
+        <% _(toggleGroups).each(function(toggles, groupName) { %>
+        <%= partial('group', {'groupName': groupName}) %>
+        <% _(toggles).each(function(toggle) { %>
+        <%= partial('toggle', toggle) %>
+        <% })}) %>
+    </script>
+    <script id="group-partial" type="text/x-handlebars-template">
+        <tr class="feature-type-row">
+            <td colspan="5" bgcolor="#6D7B8D" style="color:#ffffff; font-size:10px;"><%= groupName %></td>
+        </tr>
+    </script>
+    <script id="toggle-partial" type="text/x-handlebars-template">
+        <tr id="<%= toggle_name %>_row"  bgcolor="#ffffff" style="font-size:10px;" class="feature-row">
+            <td><%= toggle_name %></td>
+            <td align="right">
+                <img class="toggle_switch" data-feature="<%= toggle_name %>" data-state="<%= toggle_state %>" id="<%= toggle_name %>_img" img src="/v1/toggle-service/assets/images/toggle<%= toggle_state ? "On" : "Off"%>.gif" border="0"/>
+            </td>
+            <td><input type="button" data-feature="<%= toggle_name %>" class="info" value="Info"/></td>
+            <td><input type="button" data-feature="<%= toggle_name %>" class="delete" value="Delete"/></td>
+            <td><input type="button" data-feature="<%= toggle_name %>" class="update" value="Edit"/></td>
+        </tr>
+        <tr class="feature-details-row" style="display: none;">
+            <td colspan="5" bgcolor="#ffffff" styles="font-size: 10px;">
+              <p>Feature Description: <%= description %></p>
+              <p>Feature Type: <%= toggle_type %></p>
+              <p><a href="/v1/toggle-service/ui/toggles/<%= toggle_name %>/history">Complete History</a></p>
+            </td>
+        </tr>
+    </script>
+	</head>
+	<body>
+    @header("Toggles")
+
+	<br>
+		
+	<div class="content" style="display:none">
+
+	<table cellpadding="10px" cellspacing="0px" border="0" width="320px">
+		<tbody>
+			<tr>
+				<td colspan="5" bgcolor="#000000" style="color:#ffffff; font-weight:bold;" align="left">Current Toggles</td>
+            </tr>
+            <tr id="header">
+                <td bgcolor="#c1c1c1" style="font-weight:bold;">Feature Name</td>
+				<td bgcolor="#c1c1c1" style="font-weight:bold;" align="center">Status</td>
+                <td colspan="3" bgcolor="#c1c1c1" style="font-weight:bold;" align="center">Actions</td>
+			</tr>
+		</tbody>
+	</table>
+        <div id="create-toggle">
+            <form id="createForm">
+                <h2>Create Feature Toggle</h2>
+                <p>Enter name and state for the new switch</p>
+                <label for="name">Name</label>
+                <input id="name" type="text" size="30" maxlength="50">
+                <label for="state">State</label>
+                <select id="state">
+                    <option value="true">On</option>
+                    <option value="false" selected>Off</option>
+                </select>
+                <label for="desc">Description</label>
+                <textarea id="desc" rows="5"></textarea>
+                <label for="type">Type</label>
+                <select id="type">
+                    <option selected="">Permanent</option>
+                    <option>Project</option>
+                    <option>Temporary</option>
+                </select>
+            </form>
+        </div>
+	</div>
+</body>
+</html>

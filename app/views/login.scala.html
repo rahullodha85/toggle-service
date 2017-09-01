@@ -1,0 +1,65 @@
+@(form: Form[Option[HbcUser]])(implicit flash: Flash)
+
+<!DOCTYPE html>
+<html>
+    <head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+
+        <title>Login</title>
+        <script type="text/javascript" src="@routes.Assets.at("js/jquery.min.js")"></script>
+	    <script type="text/javascript" src="@routes.Assets.at("js/jquery-ui.min.js")"></script>
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/feature_toggles.css")">
+        <link rel="stylesheet" type="text/css" href="@routes.Assets.at("css/smoothness.css")">
+        <meta name="viewport" content="width= device-width, initial-scale=1.0, maximum-scale=1.0, user-scale=0">
+    </head>
+<body>
+
+@helper.form(routes.ToggleAdmin.authenticate) {
+
+	<div class="header">
+		<div class="inner">
+			<h1><img src="@routes.Assets.at("images/hbc-icon.png")" border="0">&nbsp;Toggles</h1>
+		</div>
+	</div>
+	
+	<div class="content">
+		<div class="inner">
+			<h1 class="title">Login</h1>
+
+            @form.globalError.map { error =>
+            <div class="inner" style="color: red">
+                <strong>Error!</strong> @error.message.
+            </div>
+            }
+
+            <div class="inner">
+				<label>Username</label>
+				<font face="courier new" size="3"><tt>&nbsp;</tt></font>
+				<input name="username" type="text">
+            </div>
+
+            <div class="inner">
+				<label>Password</label>
+				<font face="courier new" size="3"><tt>&nbsp;</tt></font>
+				<input name="password" type="password">
+				<br>
+            </div>
+
+            <div class="inner">
+                <input type="submit" value="Login" name="submit">
+            </div>
+		</div>
+	</div>
+	<script>
+		(function($){
+			$(document).ready(function(){
+				$('form').each(function(){
+					this.reset();
+				})
+			});
+		}(jQuery));
+	</script>
+
+}
+
+</body>
+</html>

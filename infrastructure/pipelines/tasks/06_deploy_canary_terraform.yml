@@ -1,0 +1,17 @@
+platform: linux
+
+inputs:
+- name: toggle-service-repo
+- name: aws-ref-arch
+- name: version
+
+run:
+  dir: toggle-service-repo/infrastructure/terraform
+  path: bash
+  args:
+    - -exc
+    - |
+      source $PROD_TF_ENV.sh
+      export TF_VAR_component=canary
+      tag=$(cat ../../../version/number)
+      ./scripts/deploy-canary.sh $tag

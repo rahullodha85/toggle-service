@@ -1,0 +1,5 @@
+mongo:
+  container_name: mongo
+  image: sd1pgo01lx.saksdirect.com/mongo:2
+  ports:
+    - "27017:27017"
